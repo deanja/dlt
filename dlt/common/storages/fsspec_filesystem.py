@@ -42,6 +42,7 @@ MTIME_DISPATCH = {
     "gcs": lambda f: ensure_pendulum_datetime(f["updated"]),
     "file": lambda f: ensure_pendulum_datetime(f["mtime"]),
     "memory": lambda f: ensure_pendulum_datetime(f["created"]),
+    "gitpythonfs": lambda f: ensure_pendulum_datetime(f["committed_date"]),
 }
 # Support aliases
 MTIME_DISPATCH["gs"] = MTIME_DISPATCH["gcs"]
@@ -150,20 +151,20 @@ class FileItemDict(DictStrAny):
             return fsspec_filesystem(self["file_url"], self.credentials)[0]
 
     def open(self, mode: str = "rb", **kwargs: Any) -> IO[Any]:  # noqa: A003
-        """Open the file as a fsspec file.
+        """Open the file.
 
-        This method opens the file represented by this dictionary as a file-like object using
-        the fsspec library.
+        Opens the file represented by this dictionary as a file-like object using
+        the fsspec library. If the file content has already been downloaded, it will be used
+        instead of downloading it again.
 
         Args:
-            **kwargs (Any): The arguments to pass to the fsspec open function.
+            **kwargs (Any): The arguments to pass to the fsspec open function, or
+                to TextIOWrapper if the binary content has already been downloaded.
 
         Returns:
             IOBase: The fsspec file.
         """
         opened_file: IO[Any]
-        # if the user has already extracted the content, we use it so there will be no need to
-        # download the file again.
         if "file_content" in self:
             bytes_io = BytesIO(self["file_content"])
 
@@ -201,50 +202,109 @@ def guess_mime_type(file_name: str) -> str:
 
 
 def glob_files(
-    fs_client: AbstractFileSystem, bucket_url: str, file_glob: str = "**"
+    fs_client: AbstractFileSystem, bucket_url: str, fs_urlpath: str, file_glob: str = "**"
 ) -> Iterator[FileItem]:
-    """Get the files from the filesystem client.
+    """Get the file metadata from the filesystem client.
 
     Args:
         fs_client (AbstractFileSystem): The filesystem client.
         bucket_url (str): The url to the bucket.
-        file_glob (str): A glob for the filename filter.
+            Example: 
+                s3://dlt-ci-test-bucket/standard_source/samples
+                gitpythonfs://~/dlt-verified-sources:HEAD@tests/filesystem/samples
+            It won't always work with urlparse. See the odd "/" in gitpythonfs example.
+        fs_urlpath (str): The file-system specific url path.
+            Example: dlt-ci-test-bucket/standard_source/samples
+            It will be prepended to `file_glob` to form the glob pattern passed to fsspec glob.
+            It will be applied as a mask to shorten the file name in the results.
+        file_glob (str): A glob pattern.
+            Example: */*.csv
+            It will be appended to `fs_urlpath` to form the glob pattern passed to fsspec glob.
 
     Returns:
         Iterable[FileItem]: The list of files.
     """
     import os
 
-    bucket_url_parsed = urlparse(bucket_url)
-    # if this is a file path without a scheme
-    if not bucket_url_parsed.scheme or (os.path.isabs(bucket_url) and "\\" in bucket_url):
-        # this is a file so create a proper file url
-        bucket_url = pathlib.Path(bucket_url).absolute().as_uri()
-        bucket_url_parsed = urlparse(bucket_url)
+    # #301 urlparse(bucket_url) will not work for some fsspec urls.
+    #   eg gitpythonfs://~/dlt-verified-sources:HEAD@tests/filesystem/samples
+    #   it will interpret the "/~/" as hostname and not as part of the repo path argument
+    #   If we need a "standard" url we might adapt something like 
+    #   fs_client._strip_protocol(bucket_url) where each fsspec filesystem
+    #   removes the storage-specific elements of it's own urls. url_to_fs() does that.
 
-    bucket_path = bucket_url_parsed._replace(scheme="").geturl()
-    bucket_path = bucket_path[2:] if bucket_path.startswith("//") else bucket_path
-    filter_url = posixpath.join(bucket_path, file_glob)
+    # #301 this block now only needed to get protocol. Simpler alternative?
+    # bucket_url_parsed = urlparse(bucket_url) 
+    # # if this is a file path without a protocol
+    # if not bucket_url_parsed.scheme or (os.path.isabs(bucket_url) and "\\" in bucket_url):
+    #     # this is a file so create a proper file url
+    #     bucket_url = pathlib.Path(bucket_url).absolute().as_uri()
+    #     bucket_url_parsed = urlparse(bucket_url)
 
+    #301 make this an outer function or function of a new FsspecUrl class?.
+    #   Same logic as configuration.FileSystemConfiguration.protocol()
+    #301 decide on a name to use throughout dlt: `scheme` or `protocol`
+    #   fsspec uses `protocol` but urllib uses `scheme`.
+    def get_protocol(url_or_path: str) -> str:
+        """Get the protocol from a url or path string.
+
+        If a protocol is not present, `file` is assumed.
+
+        Terminology "protocol" is preferred over "scheme" as it is used widely in fsspec
+            and dlt. urllib use of "scheme" is an implementation detail.
+
+        Args:
+            url_or_path (str): A url or path.
+
+        Returns:
+            str: The protocol, eg `s3, 'file', not including `://`
+        """
+        url = urlparse(bucket_url)
+        # this prevents windows absolute paths to be recognized as schemas
+        if not url.scheme or (os.path.isabs(bucket_url) and "\\" in bucket_url):
+            return "file"
+        else:
+            return url.scheme
+
+    protocol = get_protocol(bucket_url)
+
+    # bucket_path = bucket_url_parsed._replace(scheme="").geturl()
+    # bucket_path = bucket_path[2:] if bucket_path.startswith("//") else bucket_path
+    
+    # #301 Is the underlying requirement that the user can split
+    #   the the path between bucket_url and glob?
+    #   There may be a less bucket dependent way to do it. 
+    #   eg. url_to_fs() returns the cleaned up base path.
+    #   
+    # filter_url = posixpath.join(bucket_path, file_glob)
+    filter_url = posixpath.join(fs_urlpath, file_glob)
     glob_result = fs_client.glob(filter_url, detail=True)
+
     if isinstance(glob_result, list):
         raise NotImplementedError(
             "Cannot request details when using fsspec.glob. For ADSL (Azure) please use version"
             " 2023.9.0 or later"
         )
 
-    for file, md in glob_result.items():
-        if md["type"] != "file":
+    for path, metadata in glob_result.items():
+        # `path` from fsspec is the full path from the filesystems root, for
+        # example:
+        # dlt-ci-test-bucket/standard_source/samples/csv/mlb_players.csv
+            
+        if metadata["type"] != "file":
             continue
+
         # make that absolute path on a file://
-        if bucket_url_parsed.scheme == "file" and not file.startswith("/"):
-            file = f"/{file}"
-        file_name = posixpath.relpath(file, bucket_path)
-        file_url = f"{bucket_url_parsed.scheme}://{file}"
+        if protocol == "file" and not path.startswith("/"):
+            path = f"/{path}"
+
+        file_name = posixpath.relpath(path, fs_urlpath)
+        file_url = f"{protocol}://{path}"
+
         yield FileItem(
             file_name=file_name,
             file_url=file_url,
             mime_type=guess_mime_type(file_name),
-            modification_date=MTIME_DISPATCH[bucket_url_parsed.scheme](md),
-            size_in_bytes=int(md["size"]),
+            modification_date=MTIME_DISPATCH[protocol](metadata),
+            size_in_bytes=int(metadata["size"]),
         )
