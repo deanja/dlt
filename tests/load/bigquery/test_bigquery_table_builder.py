@@ -1,3 +1,4 @@
+import os
 import pytest
 import sqlfluff
 from copy import deepcopy
@@ -8,11 +9,12 @@ from dlt.common.schema.utils import new_table
 from dlt.common.configuration import resolve_configuration
 from dlt.common.configuration.specs import GcpServiceAccountCredentialsWithoutDefaults
 
-from dlt.destinations.bigquery.bigquery import BigQueryClient
-from dlt.destinations.bigquery.configuration import BigQueryClientConfiguration
+from dlt.destinations.impl.bigquery.bigquery import BigQueryClient
+from dlt.destinations.impl.bigquery.configuration import BigQueryClientConfiguration
 from dlt.destinations.exceptions import DestinationSchemaWillNotUpdate
 
 from tests.load.utils import TABLE_UPDATE
+
 
 @pytest.fixture
 def schema() -> Schema:
@@ -20,13 +22,17 @@ def schema() -> Schema:
 
 
 def test_configuration() -> None:
+    os.environ["MYBG__CREDENTIALS__CLIENT_EMAIL"] = "1234"
+    os.environ["MYBG__CREDENTIALS__PRIVATE_KEY"] = "1234"
+    os.environ["MYBG__CREDENTIALS__PROJECT_ID"] = "1234"
+
     # check names normalized
-    with custom_environ({"CREDENTIALS__PRIVATE_KEY": "---NO NEWLINE---\n"}):
-        C = resolve_configuration(GcpServiceAccountCredentialsWithoutDefaults())
+    with custom_environ({"MYBG__CREDENTIALS__PRIVATE_KEY": "---NO NEWLINE---\n"}):
+        C = resolve_configuration(GcpServiceAccountCredentialsWithoutDefaults(), sections=("mybg",))
         assert C.private_key == "---NO NEWLINE---\n"
 
-    with custom_environ({"CREDENTIALS__PRIVATE_KEY": "---WITH NEWLINE---\n"}):
-        C = resolve_configuration(GcpServiceAccountCredentialsWithoutDefaults())
+    with custom_environ({"MYBG__CREDENTIALS__PRIVATE_KEY": "---WITH NEWLINE---\n"}):
+        C = resolve_configuration(GcpServiceAccountCredentialsWithoutDefaults(), sections=("mybg",))
         assert C.private_key == "---WITH NEWLINE---\n"
 
 
@@ -37,7 +43,7 @@ def gcp_client(schema: Schema) -> BigQueryClient:
     creds.project_id = "test_project_id"
     return BigQueryClient(
         schema,
-        BigQueryClientConfiguration(dataset_name="test_" + uniq_id(), credentials=creds)  # type: ignore[arg-type]
+        BigQueryClientConfiguration(dataset_name="test_" + uniq_id(), credentials=creds),  # type: ignore[arg-type]
     )
 
 

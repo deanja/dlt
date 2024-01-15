@@ -5,12 +5,11 @@ on:
     branches:
       - master
       - devel
-      
+
   workflow_dispatch:
-  
+
 env:
-  DESTINATION__SYNAPSE__CREDENTIALS: ${{ secrets.SYNAPSE_CREDENTIALS }}
-  DESTINATION__SYNAPSE__CREDENTIALS__PASSWORD: ${{ secrets.SYNAPSE_PASSWORD }}
+  DLT_SECRETS_TOML: ${{ secrets.DLT_SECRETS_TOML }}
 
   RUNTIME__SENTRY_DSN: https://cf6086f7d263462088b9fb9f9947caee@o4505514867163136.ingest.sentry.io/4505516212682752
   RUNTIME__LOG_LEVEL: ERROR
@@ -42,7 +41,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      
+
       - name: Check out
         uses: actions/checkout@master
 
@@ -70,7 +69,10 @@ jobs:
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}-gcp
 
       - name: Install dependencies
-        run: poetry install --no-interaction -E synapse -E s3 -E gs -E az
+        run: poetry install --no-interaction -E synapse -E s3 -E gs -E az --with sentry-sdk --with pipeline
+
+      - name: create secrets.toml
+        run: pwd && echo "$DLT_SECRETS_TOML" > tests/.dlt/secrets.toml
 
       - run: |
           poetry run pytest tests/load --ignore tests/load/pipeline/test_dbt_helper.py

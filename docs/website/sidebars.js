@@ -102,12 +102,14 @@ const sidebars = {
         'general-usage/resource',
         'general-usage/source',
         'general-usage/pipeline',
+        'general-usage/destination',
         'general-usage/destination-tables',
         'dlt-ecosystem/staging',
         'general-usage/state',
         'general-usage/incremental-loading',
         'general-usage/full-loading',
         'general-usage/schema',
+        'general-usage/schema-contracts',
         {
           type: 'category',
           label: 'Configuration',
@@ -241,6 +243,7 @@ const sidebars = {
         'examples/connector_x_arrow/index',
         'examples/chess_production/index',
         'examples/nested_data/index',
+        'examples/qdrant_zendesk/index'
       ],
     },
     {
