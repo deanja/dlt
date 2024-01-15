@@ -38,6 +38,7 @@ MTIME_DISPATCH = {
     "gcs": lambda f: ensure_pendulum_datetime(f["updated"]),
     "file": lambda f: ensure_pendulum_datetime(f["mtime"]),
     "memory": lambda f: ensure_pendulum_datetime(f["created"]),
+    "gitpythonfs": lambda f: ensure_pendulum_datetime(f["committed_date"]),
 }
 # Support aliases
 MTIME_DISPATCH["gs"] = MTIME_DISPATCH["gcs"]
