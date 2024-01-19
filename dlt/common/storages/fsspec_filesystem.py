@@ -6,6 +6,7 @@ from io import BytesIO
 from typing import cast, Tuple, TypedDict, Optional, Union, Iterator, Any, IO, Dict, Callable
 from urllib.parse import urlparse
 
+from fsspec.registry import known_implementations, register_implementation
 from fsspec import AbstractFileSystem
 from fsspec.core import url_to_fs
 
@@ -60,7 +61,33 @@ CREDENTIALS_DISPATCH: Dict[str, Callable[[FilesystemConfiguration], DictStrAny]]
     "azure": lambda config: cast(AzureCredentials, config.credentials).to_adlfs_credentials(),
 }
 
+custom_fsspec_implementations = {
+    "gitpythonfs": {"fq_classname":"gitpythonfs.GitPythonFileSystem",
+                    "errtxt":"Please install gitpythonfs to access GitPythonFileSystem",
+                    },
+    "mydreamfs": {  "fq_classname":"mydreamfs.SomeNewFileSystem",
+                    "errtxt":"Sorry, mydreamfs doesn't exist yet.",
+                    },
+}
 
+def register_implementation_in_fsspec(protocol: str) -> None:
+    """Dynamically register the filesystem with fsspec, if not already registered.
+
+    This is needed if the implementation is not officially registered in the fsspec codebase.
+    
+    The registration is only valid for the current process.
+    """
+    if protocol in known_implementations:
+        return
+        
+    registration_details = custom_fsspec_implementations[protocol]
+        
+    register_implementation(
+        protocol,
+        registration_details["fq_classname"],
+        errtxt = registration_details["errtxt"],
+    )
+        
 def fsspec_filesystem(
     protocol: str,
     credentials: FileSystemCredentials = None,
@@ -77,6 +104,13 @@ def fsspec_filesystem(
 
     also see filesystem_from_config
     """
+    
+    # ToDo hacky. 
+    #   what about if no explicit protocol (a file path)? 
+    #   Use a fsspec method to get. 
+    #   Should have clean and explicit protocol well before reaching here.
+    register_implementation_in_fsspec(protocol.split("://")[0])
+        
     return fsspec_from_config(
         FilesystemConfiguration(protocol, credentials, kwargs=kwargs, client_kwargs=client_kwargs)
     )
