@@ -74,7 +74,7 @@ def register_implementation_in_fsspec(protocol: str) -> None:
     """Dynamically register the filesystem with fsspec, if not already registered.
 
     This is needed if the implementation is not officially registered in the fsspec codebase.
-    
+
     The registration is only valid for the current process.
     """
     if protocol in known_implementations:
@@ -106,9 +106,8 @@ def fsspec_filesystem(
     """
     
     # ToDo hacky. 
-    #   what about if no explicit protocol (a file path)? 
-    #   Use a fsspec method to get. 
-    #   Should have clean and explicit protocol well before reaching here.
+    #   - Other entry points? eg fsspec_from_config()
+    #   - Is protocol always given?  so far yes, even with local files 
     register_implementation_in_fsspec(protocol.split("://")[0])
         
     return fsspec_from_config(
