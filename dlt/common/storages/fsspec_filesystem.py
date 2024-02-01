@@ -75,7 +75,7 @@ CREDENTIALS_DISPATCH: Dict[str, Callable[[FilesystemConfiguration], DictStrAny]]
     "azure": lambda config: cast(AzureCredentials, config.credentials).to_adlfs_credentials(),
 }
 
-custom_fsspec_implementations = {
+CUSTOM_FSSPEC_IMPLEMENTATIONS = {
     "mydreamfs": {
         "fq_classname": "mydreamfs.SomeNewFileSystem",
         "errtxt": "Sorry, mydreamfs doesn't exist yet.",
@@ -104,7 +104,7 @@ def register_implementation_in_fsspec(protocol: str) -> None:
     if protocol in known_implementations:
         return
 
-    registration_details = custom_fsspec_implementations[protocol]
+    registration_details = CUSTOM_FSSPEC_IMPLEMENTATIONS[protocol]
 
     register_implementation(
         protocol,

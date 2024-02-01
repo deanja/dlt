@@ -42,39 +42,17 @@ def test_filesystem_configuration() -> None:
     }
 
 
-def test_register_implementation_in_fsspec() -> None:
+def test_register_implementation_in_fsspec(mocker) -> None:
     """Test registering a filesystem implementation with fsspec."""
-    # ToDo make test more focused and safe with mock.  Just want a unit test.
-    from fsspec.registry import known_implementations, available_protocols, register_implementation
+    import dlt.common.storages.fsspec_filesystem
 
     protocol = "mydreamfs"
-    previous_registration_existed = False
+    mocker.patch("dlt.common.storages.fsspec_filesystem.register_implementation")
 
-    # setup
-    if protocol in known_implementations:
-        backup = known_implementations.pop(protocol)
-        previous_registration_existed = True
-
-    assert (
-        not protocol in known_implementations
-    ), f"As a test precondition, {protocol} should not be registered."
-
-    # do and test
     register_implementation_in_fsspec(protocol)
-    assert protocol in available_protocols(), f"{protocol} should be registered."
 
-    # teardown
-    if previous_registration_existed:
-        register_implementation(protocol, backup, clobber=True)
-        assert (
-            protocol in available_protocols()
-        ), f"After teardown, {protocol} should not be registered, which was the original state."
-    else:
-        known_implementations.pop(protocol)
-        assert (
-            not protocol in known_implementations
-        ), f"After teardown, {protocol} should not be registered, which was the original state."
-
+    dlt.common.storages.fsspec_filesystem.register_implementation.assert_called_once()
+ 
 
 def test_filesystem_instance(all_buckets_env: str) -> None:
     bucket_url = os.environ["DESTINATION__FILESYSTEM__BUCKET_URL"]
