@@ -8,7 +8,11 @@ from dlt.common import pendulum
 from dlt.common.configuration.inject import with_config
 from dlt.common.configuration.specs import AzureCredentials, AzureCredentialsWithoutDefaults
 from dlt.common.storages import fsspec_from_config, FilesystemConfiguration
-from dlt.common.storages.fsspec_filesystem import MTIME_DISPATCH, glob_files
+from dlt.common.storages.fsspec_filesystem import (
+    register_implementation_in_fsspec,
+    MTIME_DISPATCH,
+    glob_files,
+)
 from dlt.common.utils import uniq_id
 from tests.common.storages.utils import assert_sample_files
 from tests.load.utils import ALL_FILESYSTEM_DRIVERS, AWS_BUCKET
@@ -36,6 +40,40 @@ def test_filesystem_configuration() -> None:
         "client_kwargs": None,
         "kwargs": None,
     }
+
+
+def test_register_implementation_in_fsspec() -> None:
+    """Test registering a filesystem implementation with fsspec."""
+    # ToDo make test more focused and safe with mock.  Just want a unit test.
+    from fsspec.registry import known_implementations, available_protocols, register_implementation
+
+    protocol = "mydreamfs"
+    previous_registration_existed = False
+
+    # setup
+    if protocol in known_implementations:
+        backup = known_implementations.pop(protocol)
+        previous_registration_existed = True
+
+    assert (
+        not protocol in known_implementations
+    ), f"As a test precondition, {protocol} should not be registered."
+
+    # do and test
+    register_implementation_in_fsspec(protocol)
+    assert protocol in available_protocols(), f"{protocol} should be registered."
+
+    # teardown
+    if previous_registration_existed:
+        register_implementation(protocol, backup, clobber=True)
+        assert (
+            protocol in available_protocols()
+        ), f"After teardown, {protocol} should not be registered, which was the original state."
+    else:
+        known_implementations.pop(protocol)
+        assert (
+            not protocol in known_implementations
+        ), f"After teardown, {protocol} should not be registered, which was the original state."
 
 
 def test_filesystem_instance(all_buckets_env: str) -> None:

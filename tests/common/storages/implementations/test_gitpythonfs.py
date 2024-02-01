@@ -8,10 +8,10 @@ from typing import Iterator, Any
 
 import fsspec
 from fsspec.registry import (
-    get_filesystem_class,
     known_implementations,
     available_protocols,
     filesystem,
+    register_implementation,
 )
 
 from git import Repo, BadName
@@ -82,22 +82,37 @@ def repo_fixture() -> Iterator[Any]:
 
 @pytest.mark.skip_fsspec_registration
 def test_register_implementation_in_fsspec() -> None:
-    """Test registering a filesystem with fsspec."""
+    """Test registering a filesystem implementation with fsspec.
+
+    Takes care with state since other tests may be expecting certain
+    implementations to be registered.
+    """
+    previous_registration_existed = False
+
+    # setup
     if PROTOCOL in known_implementations:
-        known_implementations.pop(PROTOCOL)
+        backup = known_implementations.pop(PROTOCOL)
+        previous_registration_existed = True
 
     assert (
         not PROTOCOL in known_implementations
     ), f"As a test precondition, {PROTOCOL} should not be registered."
 
+    # do and test
     register_implementation_in_fsspec()
     assert PROTOCOL in available_protocols(), f"{PROTOCOL} should be registered."
 
-    cls = get_filesystem_class(PROTOCOL)
-    assert cls == GitPythonFileSystem
-
-    if PROTOCOL in known_implementations:
+    # teardown
+    if previous_registration_existed:
+        register_implementation(PROTOCOL, backup, clobber=True)
+        assert (
+            PROTOCOL in available_protocols()
+        ), f"After teardown, {PROTOCOL} should not be registered, which was the original state."
+    else:
         known_implementations.pop(PROTOCOL)
+        assert (
+            not PROTOCOL in known_implementations
+        ), f"After teardown, {PROTOCOL} should not be registered, which was the original state."
 
 
 def test_instantiate_fsspec_filesystem(repo_fixture: Iterator[Any]) -> None:

@@ -20,6 +20,7 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+from fsspec.registry import known_implementations, register_implementation
 from fsspec import AbstractFileSystem
 from fsspec.core import url_to_fs
 
@@ -73,6 +74,43 @@ CREDENTIALS_DISPATCH: Dict[str, Callable[[FilesystemConfiguration], DictStrAny]]
     "abfs": lambda config: cast(AzureCredentials, config.credentials).to_adlfs_credentials(),
     "azure": lambda config: cast(AzureCredentials, config.credentials).to_adlfs_credentials(),
 }
+
+custom_fsspec_implementations = {
+    "mydreamfs": {
+        "fq_classname": "mydreamfs.SomeNewFileSystem",
+        "errtxt": "Sorry, mydreamfs doesn't exist yet.",
+    },
+    "gitpythonfs": {
+        "fq_classname": "gitpythonfs.GitPythonFileSystem",
+        "errtxt": "Please install gitpythonfs to access GitPythonFileSystem",
+    },
+}
+
+
+def register_implementation_in_fsspec(protocol: str) -> None:
+    """Dynamically register a filesystem implementation with fsspec.
+
+    This is useful if the implementation is not officially known in the fsspec codebase.
+
+    The registration's scope is the current process.
+
+    Is a no-op if an implementation is already registerd for the given protocol.
+
+    Args:
+        protocol (str): The protocol to register.
+
+    Returns: None
+    """
+    if protocol in known_implementations:
+        return
+
+    registration_details = custom_fsspec_implementations[protocol]
+
+    register_implementation(
+        protocol,
+        registration_details["fq_classname"],
+        errtxt=registration_details["errtxt"],
+    )
 
 
 def fsspec_filesystem(
@@ -134,6 +172,8 @@ def fsspec_from_config(config: FilesystemConfiguration) -> Tuple[AbstractFileSys
     Returns: (fsspec filesystem, normalized url)
     """
     fs_kwargs = prepare_fsspec_args(config)
+    register_implementation_in_fsspec(config.protocol)
+
     try:
         return url_to_fs(config.bucket_url, **fs_kwargs)  # type: ignore
     except ModuleNotFoundError as e:
