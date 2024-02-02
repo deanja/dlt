@@ -19,7 +19,7 @@ from .configuration import (
     TSchemaFileFormat,
     FilesystemConfiguration,
 )
-from .fsspec_filesystem import fsspec_from_config, fsspec_filesystem
+from .fsspec_filesystem import fsspec_from_config
 
 
 __all__ = [
@@ -41,5 +41,4 @@ __all__ = [
     "PackageStorage",
     "TJobState",
     "fsspec_from_config",
-    "fsspec_filesystem",
 ]

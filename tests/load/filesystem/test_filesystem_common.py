@@ -46,13 +46,24 @@ def test_register_implementation_in_fsspec(mocker) -> None:
     """Test registering a filesystem implementation with fsspec."""
     import dlt.common.storages.fsspec_filesystem
 
-    protocol = "mydreamfs"
+    protocol = "dummyfs"
+    mocker.patch(
+        "dlt.common.storages.fsspec_filesystem.CUSTOM_IMPLEMENTATIONS",
+        {
+            "dummyfs": {
+                "fq_classname": "dummyfs.SomeFileSystemClass",
+                "errtxt": "Sorry, dummyfs is only a mock value.",
+            },
+        },
+    )
     mocker.patch("dlt.common.storages.fsspec_filesystem.register_implementation")
 
     register_implementation_in_fsspec(protocol)
 
-    dlt.common.storages.fsspec_filesystem.register_implementation.assert_called_once()
- 
+    dlt.common.storages.fsspec_filesystem.register_implementation.assert_called_once_with(
+        protocol, "dummyfs.SomeFileSystemClass", errtxt="Sorry, dummyfs is only a mock value."
+    )
+
 
 def test_filesystem_instance(all_buckets_env: str) -> None:
     bucket_url = os.environ["DESTINATION__FILESYSTEM__BUCKET_URL"]
